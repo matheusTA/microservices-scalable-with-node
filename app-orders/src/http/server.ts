@@ -2,11 +2,19 @@ import { fastify } from "fastify";
 import { fastifyCors } from "@fastify/cors";
 import { z } from 'zod/v3';
 import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from 'fastify-type-provider-zod';
+import { channels } from "../broker/channels/index.ts";
+import { db } from "../db/client.ts";
+import { schemas } from "../db/schemas/index.ts";
+import { randomUUID } from "node:crypto";
 
 const app = fastify().withTypeProvider<ZodTypeProvider>();
 
 app.setSerializerCompiler(serializerCompiler);
 app.setValidatorCompiler(validatorCompiler);
+
+app.register(fastifyCors, {
+  origin: '*',
+})
 
 app.get('/health', () => 'OK');
 
@@ -14,12 +22,19 @@ app.post('/orders', {
   schema: {
     body: z.object({
       amount: z.number(),
+      customerId: z.string(),
     }),
   },
-}, (request, reply) => {
-  const { amount } = request.body;
+}, async (request, reply) => {
+  const { amount, customerId } = request.body;
 
-  console.log(amount);
+  await db.insert(schemas.orders).values({
+    id: randomUUID(),
+    amount,
+    customerId,
+  })
+
+  channels.orders.sendToQueue('orders', Buffer.from('Hello World'))
 
   return reply.status(201).send({
     message: 'Order created successfully',
